@@ -18,18 +18,12 @@ export default async function RSVPPage({ params }: { params: { eventSlug: string
       slug: true,
       date: true,
       description: true,
+      type: true,
       venue: { select: { name: true, address: true, city: true } },
     },
   });
 
   if (!event) notFound();
 
-  return (
-    <RSVPForm
-      event={{
-        ...event,
-        date: event.date.toISOString(),
-      }}
-    />
-  );
+  return <RSVPForm event={{ ...event, date: event.date.toISOString() }} />;
 }

@@ -48,10 +48,10 @@ type Event = {
 };
 
 const ZONE_DEFAULTS = [
-  { name: "family",     label: "Family",       color: "#ec4899" },
-  { name: "friends",    label: "Friends",      color: "#6366f1" },
-  { name: "colleagues", label: "Colleagues",   color: "#10b981" },
-  { name: "other",      label: "Other Guests", color: "#f59e0b" },
+  { name: "bride",  label: "Bride's Side",  color: "#ec4899" },
+  { name: "groom",  label: "Groom's Side",  color: "#6366f1" },
+  { name: "vip",    label: "VIP",           color: "#f59e0b" },
+  { name: "other",  label: "Other Guests",  color: "#10b981" },
 ];
 
 async function apiFetch(url: string, opts?: RequestInit): Promise<unknown> {

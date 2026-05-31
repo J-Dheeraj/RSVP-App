@@ -14,7 +14,7 @@ export const rsvpSchema = z.object({
     .optional()
     .or(z.literal("")),
   guestCount: z.coerce.number().int().min(1).max(20),
-  relationship: z.enum(["family", "friends", "colleagues", "other"]),
+  relationship: z.string().min(1).max(50),
   needsTransport: z.boolean(),
   pickupLocation: z.string().max(200).optional().or(z.literal("")),
   dietaryNeeds: z.string().max(300).optional().or(z.literal("")),
@@ -31,7 +31,7 @@ export const createEventSchema = z.object({
   date: z.string().datetime(),
   venueId: z.string().min(1, "Please select a venue"),
   description: z.string().max(1000).optional().or(z.literal("")),
-  type: z.enum(["wedding", "other"]),
+  type: z.enum(["wedding", "gala-dinner", "private-party", "birthday", "corporate", "cocktail", "other"]),
   allocation: z.enum(["zone", "auto", "manual"]),
   maxPerTable: z.coerce.number().int().min(1).max(50),
 });

@@ -11,64 +11,82 @@ async function main() {
     create: { email: "admin@royaltaj.sg", passwordHash: hash, name: "Royal Taj Admin" },
   });
 
-  // Venues
-  const sentosa = await prisma.venue.upsert({
-    where: { id: "venue-sentosa" },
+  // Real venues Royal Taj caters at
+  const amara = await prisma.venue.upsert({
+    where: { id: "venue-amara" },
     update: {},
     create: {
-      id: "venue-sentosa",
-      name: "Royal Taj Sentosa",
-      address: "Sentosa Island",
+      id: "venue-amara",
+      name: "Amara Sanctuary Ballroom",
+      address: "1 Larkhill Road, Sentosa Island",
       city: "Singapore",
-      description: "Fine dining at Sentosa Island",
+      description: "Grand ballroom at Amara Sanctuary Resort Sentosa",
     },
   });
 
   await prisma.venue.upsert({
-    where: { id: "venue-orchard" },
+    where: { id: "venue-private" },
     update: {},
     create: {
-      id: "venue-orchard",
-      name: "Royal Taj Orchard",
-      address: "Orchard Road",
+      id: "venue-private",
+      name: "Private Residence",
+      address: "",
       city: "Singapore",
+      description: "Client's home or private venue — update address when confirmed",
     },
   });
 
-  // Sample event
-  const event = await prisma.event.upsert({
-    where: { slug: "royal-taj-gala-2026" },
+  // Sample wedding at Amara Sanctuary Ballroom
+  const wedding = await prisma.event.upsert({
+    where: { slug: "priya-arjun-wedding-2026" },
     update: {},
     create: {
-      name: "Royal Taj Gala Dinner 2026",
-      slug: "royal-taj-gala-2026",
-      date: new Date("2026-09-20T19:00:00+08:00"),
-      venueId: sentosa.id,
-      description: "An evening of fine dining and celebration.",
-      type: "other",
-      allocation: "auto",
+      name: "Priya & Arjun Wedding",
+      slug: "priya-arjun-wedding-2026",
+      date: new Date("2026-10-11T18:30:00+08:00"),
+      venueId: amara.id,
+      description: "Join us as we celebrate the union of Priya and Arjun.",
+      type: "wedding",
+      allocation: "zone",
       maxPerTable: 10,
     },
   });
 
-  // Sample tables
-  for (let i = 1; i <= 6; i++) {
-    await prisma.table.upsert({
-      where: { id: `table-gala-${i}` },
+  // Zones for the wedding (bride/groom sides)
+  const zones = [
+    { id: "zone-bride",    name: "bride",     label: "Bride's Side",  color: "#ec4899" },
+    { id: "zone-groom",    name: "groom",     label: "Groom's Side",  color: "#6366f1" },
+    { id: "zone-vip",      name: "vip",       label: "VIP",           color: "#f59e0b" },
+    { id: "zone-other",    name: "other",     label: "Other Guests",  color: "#10b981" },
+  ];
+  for (const z of zones) {
+    await prisma.zone.upsert({
+      where: { id: z.id },
       update: {},
-      create: {
-        id: `table-gala-${i}`,
-        eventId: event.id,
-        number: i,
-        label: `Table ${i}`,
-        capacity: 10,
-      },
+      create: { ...z, eventId: wedding.id },
+    });
+  }
+
+  // Tables per zone
+  const tableData = [
+    { number: 1, label: "Bride's Table 1",  zoneId: "zone-bride", capacity: 10 },
+    { number: 2, label: "Bride's Table 2",  zoneId: "zone-bride", capacity: 10 },
+    { number: 3, label: "Groom's Table 1",  zoneId: "zone-groom", capacity: 10 },
+    { number: 4, label: "Groom's Table 2",  zoneId: "zone-groom", capacity: 10 },
+    { number: 5, label: "VIP Table",        zoneId: "zone-vip",   capacity:  8 },
+    { number: 6, label: "General Table 1",  zoneId: "zone-other", capacity: 10 },
+  ];
+  for (const t of tableData) {
+    await prisma.table.upsert({
+      where: { id: `table-w-${t.number}` },
+      update: {},
+      create: { id: `table-w-${t.number}`, eventId: wedding.id, ...t },
     });
   }
 
   console.log("✅ Seed complete");
-  console.log("   Admin: admin@royaltaj.sg / admin123");
-  console.log("   RSVP:  http://localhost:3000/rsvp/royal-taj-gala-2026");
+  console.log("   Admin:   admin@royaltaj.sg / admin123");
+  console.log("   Wedding: http://localhost:3000/rsvp/priya-arjun-wedding-2026");
 }
 
 main()

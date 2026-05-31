@@ -8,10 +8,18 @@ type EventInfo = {
   slug: string;
   date: string;
   description: string | null;
+  type: string;
   venue: { name: string; address: string | null; city: string };
 };
 
-const RELATIONSHIPS = [
+const WEDDING_RELATIONSHIPS = [
+  { value: "bride",  label: "Bride's Side" },
+  { value: "groom",  label: "Groom's Side" },
+  { value: "vip",    label: "VIP" },
+  { value: "other",  label: "Other" },
+];
+
+const DEFAULT_RELATIONSHIPS = [
   { value: "family",     label: "Family" },
   { value: "friends",    label: "Friends" },
   { value: "colleagues", label: "Colleagues" },
@@ -28,18 +36,6 @@ type Field = {
   pickupLocation: string;
   dietaryNeeds: string;
   message: string;
-};
-
-const defaults: Field = {
-  guestName: "",
-  email: "",
-  phone: "",
-  guestCount: 1,
-  relationship: "friends",
-  needsTransport: false,
-  pickupLocation: "",
-  dietaryNeeds: "",
-  message: "",
 };
 
 function formatDate(iso: string) {
@@ -61,7 +57,20 @@ function formatTime(iso: string) {
 
 export default function RSVPForm({ event }: { event: EventInfo }) {
   const router = useRouter();
-  const [form, setForm] = useState<Field>(defaults);
+  const isWedding = event.type === "wedding";
+  const relationships = isWedding ? WEDDING_RELATIONSHIPS : DEFAULT_RELATIONSHIPS;
+
+  const [form, setForm] = useState<Field>({
+    guestName: "",
+    email: "",
+    phone: "",
+    guestCount: 1,
+    relationship: isWedding ? "bride" : "friends",
+    needsTransport: false,
+    pickupLocation: "",
+    dietaryNeeds: "",
+    message: "",
+  });
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(false);
 
@@ -102,9 +111,6 @@ export default function RSVPForm({ event }: { event: EventInfo }) {
     <main className="min-h-screen bg-amber-50">
       {/* Event banner */}
       <div className="bg-stone-900 text-white px-6 py-10 text-center">
-        <p className="text-amber-400 text-xs font-semibold tracking-[0.2em] uppercase mb-3">
-          Royal Taj
-        </p>
         <h1 className="text-2xl sm:text-3xl font-serif font-bold leading-snug">
           {event.name}
         </h1>
@@ -219,10 +225,11 @@ export default function RSVPForm({ event }: { event: EventInfo }) {
           {/* Relationship */}
           <div>
             <label className="block text-sm font-medium text-stone-700 mb-2">
-              Your relationship to the host <span className="text-amber-600">*</span>
+              {isWedding ? "Attending as" : "Your relationship to the host"}{" "}
+              <span className="text-amber-600">*</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
-              {RELATIONSHIPS.map((r) => (
+              {relationships.map((r) => (
                 <button
                   key={r.value}
                   type="button"
@@ -315,6 +322,8 @@ export default function RSVPForm({ event }: { event: EventInfo }) {
 
           <p className="text-center text-stone-400 text-xs pt-1">
             Your details are only used to manage seating for this event.
+            <br />
+            <span className="text-stone-300">Catered by Royal Taj</span>
           </p>
         </form>
       </div>
