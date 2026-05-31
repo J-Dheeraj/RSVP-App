@@ -3,7 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { rsvpSchema } from "@/lib/validations";
 import { allocateTable } from "@/lib/allocation";
 
-// Simple in-memory rate limit: max 5 submissions per IP per 10 minutes
+// NOTE: This rate limiter works in long-running Node.js servers.
+// On serverless (Vercel), each cold start resets the map — replace with
+// Upstash Redis (@upstash/ratelimit) before deploying to production.
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
 function checkRateLimit(ip: string): boolean {
@@ -20,7 +22,12 @@ function checkRateLimit(ip: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "unknown";
+  // x-forwarded-for is a comma-separated proxy chain — take the first (client) IP
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0].trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown";
+
   if (!checkRateLimit(ip)) {
     return NextResponse.json({ error: "Too many submissions. Try again later." }, { status: 429 });
   }
@@ -33,8 +40,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten().fieldErrors }, { status: 422 });
   }
 
-  const { eventSlug, ...data } = body as { eventSlug: string } & typeof parsed.data;
-  if (!eventSlug) return NextResponse.json({ error: "Missing eventSlug" }, { status: 400 });
+  const { eventSlug, ...data } = parsed.data;
 
   const event = await prisma.event.findUnique({
     where: { slug: eventSlug, isActive: true },
@@ -44,27 +50,55 @@ export async function POST(req: NextRequest) {
 
   const tableId = allocateTable(event, data.relationship, data.guestCount);
 
-  const rsvp = await prisma.rSVP.create({
-    data: {
-      eventId: event.id,
-      tableId,
-      guestName: data.guestName,
-      email: data.email || null,
-      phone: data.phone || null,
-      guestCount: data.guestCount,
-      relationship: data.relationship,
-      needsTransport: data.needsTransport,
-      pickupLocation: data.needsTransport ? (data.pickupLocation || null) : null,
-      dietaryNeeds: data.dietaryNeeds || null,
-      message: data.message || null,
-    },
-    include: { table: { include: { zone: true } } },
-  });
+  try {
+    const rsvp = await prisma.$transaction(async (tx) => {
+      // Re-check capacity inside the transaction to prevent overbooking under
+      // concurrent submissions (TOCTOU between allocation read and create write).
+      if (tableId) {
+        const [agg, table] = await Promise.all([
+          tx.rSVP.aggregate({
+            where: { tableId },
+            _sum: { guestCount: true },
+          }),
+          tx.table.findUnique({ where: { id: tableId }, select: { capacity: true } }),
+        ]);
+        const used = agg._sum.guestCount ?? 0;
+        if (table && used + data.guestCount > table.capacity) {
+          throw Object.assign(new Error("TABLE_FULL"), { code: "TABLE_FULL" });
+        }
+      }
 
-  return NextResponse.json({
-    id: rsvp.id,
-    tableName: rsvp.table?.label ?? (rsvp.table ? `Table ${rsvp.table.number}` : null),
-    tableAssigned: !!rsvp.tableId,
-    eventName: event.name,
-  });
+      return tx.rSVP.create({
+        data: {
+          eventId: event.id,
+          tableId,
+          guestName: data.guestName,
+          email: data.email || null,
+          phone: data.phone || null,
+          guestCount: data.guestCount,
+          relationship: data.relationship,
+          needsTransport: data.needsTransport,
+          pickupLocation: data.needsTransport ? (data.pickupLocation || null) : null,
+          dietaryNeeds: data.dietaryNeeds || null,
+          message: data.message || null,
+        },
+        include: { table: { include: { zone: true } } },
+      });
+    });
+
+    return NextResponse.json({
+      id: rsvp.id,
+      tableName: rsvp.table?.label ?? (rsvp.table ? `Table ${rsvp.table.number}` : null),
+      tableAssigned: !!rsvp.tableId,
+      eventName: event.name,
+    });
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message === "TABLE_FULL") {
+      return NextResponse.json(
+        { error: "No seats available. Please try again or contact the organiser." },
+        { status: 409 }
+      );
+    }
+    throw e;
+  }
 }

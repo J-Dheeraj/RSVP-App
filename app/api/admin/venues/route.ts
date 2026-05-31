@@ -2,18 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { z } from "zod";
+import { venueSchema } from "@/lib/validations";
 
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
-
-const venueSchema = z.object({
-  name: z.string().min(2).max(200),
-  address: z.string().max(300).optional().or(z.literal("")),
-  city: z.string().max(100).optional(),
-  description: z.string().max(500).optional().or(z.literal("")),
-});
 
 export async function GET() {
   const session = await getServerSession(authOptions);

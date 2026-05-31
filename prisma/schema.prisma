@@ -70,6 +70,8 @@ model Table {
   capacity Int     @default(10)
 
   rsvps    RSVP[]
+
+  @@unique([eventId, number])
 }
 
 model RSVP {

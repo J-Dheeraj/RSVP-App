@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import QRCode from "./QRCode";
 
@@ -48,19 +48,26 @@ type Event = {
 };
 
 const ZONE_DEFAULTS = [
-  { name: "family", label: "Family", color: "#ec4899" },
-  { name: "friends", label: "Friends", color: "#6366f1" },
-  { name: "colleagues", label: "Colleagues", color: "#10b981" },
-  { name: "other", label: "Other Guests", color: "#f59e0b" },
+  { name: "family",     label: "Family",       color: "#ec4899" },
+  { name: "friends",    label: "Friends",      color: "#6366f1" },
+  { name: "colleagues", label: "Colleagues",   color: "#10b981" },
+  { name: "other",      label: "Other Guests", color: "#f59e0b" },
 ];
+
+async function apiFetch(url: string, opts?: RequestInit): Promise<unknown> {
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? `Request failed (${res.status})`);
+  return data;
+}
 
 export default function EventDetailClient({ event: initialEvent }: { event: Event }) {
   const [event, setEvent] = useState(initialEvent);
   const [tab, setTab] = useState<"rsvps" | "tables" | "qr">("rsvps");
   const [newTable, setNewTable] = useState({ number: "", label: "", capacity: "", zoneId: "" });
   const [addingTable, setAddingTable] = useState(false);
-  const [addingZone, setAddingZone] = useState(false);
   const [newZone, setNewZone] = useState({ name: "", label: "", color: "#6366f1" });
+  const [mutError, setMutError] = useState<string | null>(null);
 
   const rsvpUrl =
     typeof window !== "undefined"
@@ -71,86 +78,110 @@ export default function EventDetailClient({ event: initialEvent }: { event: Even
   const needsTransport = event.rsvps.filter((r) => r.needsTransport).length;
   const unassigned = event.rsvps.filter((r) => !r.tableId).length;
 
+  function seatsUsed(table: Table) {
+    return table.rsvps.reduce((s, r) => s + r.guestCount, 0);
+  }
+
   async function reload() {
-    const res = await fetch(`/api/admin/events/${event.id}`);
-    if (res.ok) setEvent(await res.json());
+    const data = await apiFetch(`/api/admin/events/${event.id}`);
+    setEvent(data as Event);
+  }
+
+  async function run(action: () => Promise<void>) {
+    setMutError(null);
+    try {
+      await action();
+    } catch (e: unknown) {
+      setMutError(e instanceof Error ? e.message : "Something went wrong");
+    }
   }
 
   async function assignTable(rsvpId: string, tableId: string | null) {
-    await fetch(`/api/admin/rsvps/${rsvpId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tableId }),
+    run(async () => {
+      await apiFetch(`/api/admin/rsvps/${rsvpId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tableId }),
+      });
+      await reload();
     });
-    await reload();
   }
 
   async function deleteRsvp(rsvpId: string) {
     if (!confirm("Delete this RSVP?")) return;
-    await fetch(`/api/admin/rsvps/${rsvpId}`, { method: "DELETE" });
-    await reload();
+    run(async () => {
+      await apiFetch(`/api/admin/rsvps/${rsvpId}`, { method: "DELETE" });
+      await reload();
+    });
   }
 
   async function addTable() {
     if (!newTable.number || !newTable.capacity) return;
     setAddingTable(true);
-    await fetch("/api/admin/tables", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        eventId: event.id,
-        number: parseInt(newTable.number),
-        label: newTable.label || undefined,
-        capacity: parseInt(newTable.capacity),
-        zoneId: newTable.zoneId || undefined,
-      }),
+    await run(async () => {
+      await apiFetch("/api/admin/tables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: event.id,
+          number: parseInt(newTable.number),
+          label: newTable.label || undefined,
+          capacity: parseInt(newTable.capacity),
+          zoneId: newTable.zoneId || undefined,
+        }),
+      });
+      setNewTable({ number: "", label: "", capacity: "", zoneId: "" });
+      await reload();
     });
-    setNewTable({ number: "", label: "", capacity: "", zoneId: "" });
     setAddingTable(false);
-    await reload();
   }
 
   async function deleteTable(tableId: string) {
     if (!confirm("Delete this table? RSVPs assigned to it will be unassigned.")) return;
-    await fetch(`/api/admin/tables?id=${tableId}`, { method: "DELETE" });
-    await reload();
+    run(async () => {
+      await apiFetch(`/api/admin/tables?id=${tableId}`, { method: "DELETE" });
+      await reload();
+    });
   }
 
   async function addZone() {
     if (!newZone.name || !newZone.label) return;
-    await fetch("/api/admin/zones", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventId: event.id, ...newZone }),
+    run(async () => {
+      await apiFetch("/api/admin/zones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: event.id, ...newZone }),
+      });
+      setNewZone({ name: "", label: "", color: "#6366f1" });
+      await reload();
     });
-    setNewZone({ name: "", label: "", color: "#6366f1" });
-    await reload();
   }
 
   async function addDefaultZones() {
-    for (const z of ZONE_DEFAULTS) {
-      await fetch("/api/admin/zones", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId: event.id, ...z }),
-      });
-    }
-    await reload();
+    run(async () => {
+      await Promise.all(
+        ZONE_DEFAULTS.map((z) =>
+          apiFetch("/api/admin/zones", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ eventId: event.id, ...z }),
+          })
+        )
+      );
+      await reload();
+    });
   }
 
   async function toggleActive() {
-    await fetch(`/api/admin/events/${event.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: !event.isActive }),
+    run(async () => {
+      await apiFetch(`/api/admin/events/${event.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !event.isActive }),
+      });
+      await reload();
     });
-    await reload();
   }
-
-  const seatsUsed = useCallback(
-    (table: Table) => table.rsvps.reduce((s, r) => s + r.guestCount, 0),
-    []
-  );
 
   return (
     <div>
@@ -185,13 +216,25 @@ export default function EventDetailClient({ event: initialEvent }: { event: Even
         </button>
       </div>
 
+      {/* Error banner */}
+      {mutError && (
+        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-center justify-between">
+          <span>{mutError}</span>
+          <button onClick={() => setMutError(null)} className="ml-4 text-red-400 hover:text-red-600">✕</button>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { label: "Total RSVPs", value: event.rsvps.length, color: "text-rose-700" },
-          { label: "Total Guests", value: totalGuests, color: "text-stone-800" },
-          { label: "Need Transport", value: needsTransport, color: "text-amber-700" },
-          { label: "Unassigned", value: unassigned, color: unassigned > 0 ? "text-red-600" : "text-green-600" },
+          { label: "Total RSVPs",    value: event.rsvps.length, color: "text-rose-700" },
+          { label: "Total Guests",   value: totalGuests,        color: "text-stone-800" },
+          { label: "Need Transport", value: needsTransport,     color: "text-amber-700" },
+          {
+            label: "Unassigned",
+            value: unassigned,
+            color: unassigned > 0 ? "text-red-600" : "text-green-600",
+          },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-stone-200 p-4">
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -210,7 +253,11 @@ export default function EventDetailClient({ event: initialEvent }: { event: Even
               tab === t ? "bg-white shadow-sm text-stone-800" : "text-stone-500 hover:text-stone-700"
             }`}
           >
-            {t === "qr" ? "QR Code" : t === "rsvps" ? `RSVPs (${event.rsvps.length})` : `Tables (${event.tables.length})`}
+            {t === "qr"
+              ? "QR Code"
+              : t === "rsvps"
+              ? `RSVPs (${event.rsvps.length})`
+              : `Tables (${event.tables.length})`}
           </button>
         ))}
       </div>
@@ -315,7 +362,12 @@ export default function EventDetailClient({ event: initialEvent }: { event: Even
                 <input
                   placeholder="name (e.g. vip)"
                   value={newZone.name}
-                  onChange={(e) => setNewZone((z) => ({ ...z, name: e.target.value.toLowerCase().replace(/\s/g, "_") }))}
+                  onChange={(e) =>
+                    setNewZone((z) => ({
+                      ...z,
+                      name: e.target.value.toLowerCase().replace(/\s/g, "_"),
+                    }))
+                  }
                   className="flex-1 px-3 py-2 rounded-lg border border-stone-200 text-sm focus:outline-none focus:ring-1 focus:ring-rose-300"
                 />
                 <input
@@ -377,7 +429,9 @@ export default function EventDetailClient({ event: initialEvent }: { event: Even
                       </div>
                       <div className="w-full bg-stone-100 rounded-full h-1.5">
                         <div
-                          className={`h-1.5 rounded-full transition-all ${pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-green-500"}`}
+                          className={`h-1.5 rounded-full transition-all ${
+                            pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-green-500"
+                          }`}
                           style={{ width: `${pct}%` }}
                         />
                       </div>

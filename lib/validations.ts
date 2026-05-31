@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 export const rsvpSchema = z.object({
+  eventSlug: z
+    .string()
+    .min(2)
+    .max(100)
+    .regex(/^[a-z0-9-]+$/, "Invalid event slug"),
   guestName: z.string().min(2, "Name must be at least 2 characters").max(100),
   email: z.string().email("Invalid email").optional().or(z.literal("")),
   phone: z
@@ -39,7 +44,9 @@ export const createTableSchema = z.object({
   zoneId: z.string().optional().or(z.literal("")),
 });
 
-export const assignTableSchema = z.object({
-  rsvpId: z.string(),
-  tableId: z.string().nullable(),
+export const venueSchema = z.object({
+  name: z.string().min(2).max(200),
+  address: z.string().max(300).optional().or(z.literal("")),
+  city: z.string().max(100).optional(),
+  description: z.string().max(500).optional().or(z.literal("")),
 });

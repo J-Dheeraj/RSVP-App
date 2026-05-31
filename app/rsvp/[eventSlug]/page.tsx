@@ -165,7 +165,7 @@ export default function RSVPPage() {
           {/* Relationship */}
           <div>
             <label className="block text-sm font-medium text-stone-700 mb-2">
-              How do you know the couple? <span className="text-rose-500">*</span>
+              Your relationship to the host <span className="text-rose-500">*</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
               {RELATIONSHIPS.map((r) => (
@@ -235,13 +235,13 @@ export default function RSVPPage() {
           {/* Message */}
           <div>
             <label className="block text-sm font-medium text-stone-700 mb-1">
-              Message to the couple
+              Message or special requests
             </label>
             <textarea
               value={form.message}
               onChange={(e) => set("message", e.target.value)}
               rows={3}
-              placeholder="Share your wishes…"
+              placeholder="Any special requests or notes for the organiser…"
               className="w-full px-4 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-rose-300 resize-none"
             />
           </div>

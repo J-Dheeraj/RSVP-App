@@ -14,6 +14,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
 
+  // Verify the target table belongs to the same event as the RSVP
+  if (body.tableId) {
+    const [rsvp, table] = await Promise.all([
+      prisma.rSVP.findUnique({ where: { id: params.id }, select: { eventId: true } }),
+      prisma.table.findUnique({ where: { id: body.tableId }, select: { eventId: true } }),
+    ]);
+    if (!rsvp) return NextResponse.json({ error: "RSVP not found" }, { status: 404 });
+    if (!table || table.eventId !== rsvp.eventId) {
+      return NextResponse.json({ error: "Table does not belong to this event" }, { status: 400 });
+    }
+  }
+
   const rsvp = await prisma.rSVP.update({
     where: { id: params.id },
     data: {
