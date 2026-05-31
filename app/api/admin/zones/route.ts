@@ -25,6 +25,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten().fieldErrors }, { status: 422 });
   }
 
+  // Verify the event exists before creating a zone for it
+  const event = await prisma.event.findUnique({
+    where: { id: parsed.data.eventId },
+    select: { id: true },
+  });
+  if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 });
+
   const zone = await prisma.zone.create({ data: parsed.data });
   return NextResponse.json(zone, { status: 201 });
 }
@@ -36,6 +43,10 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  // Verify the zone exists before attempting deletion
+  const zone = await prisma.zone.findUnique({ where: { id }, select: { id: true } });
+  if (!zone) return NextResponse.json({ error: "Zone not found" }, { status: 404 });
 
   await prisma.zone.delete({ where: { id } });
   return NextResponse.json({ ok: true });
