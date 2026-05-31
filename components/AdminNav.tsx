@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 
 const links = [
-  { href: "/admin/dashboard", label: "Events", match: ["/admin/dashboard", "/admin/events"] },
-  { href: "/admin/venues",    label: "Venues",  match: ["/admin/venues"] },
+  { href: "/admin/dashboard", label: "Events",   match: ["/admin/dashboard", "/admin/events"] },
+  { href: "/admin/venues",    label: "Venues",   match: ["/admin/venues"] },
+  { href: "/admin/settings",  label: "Settings", match: ["/admin/settings"] },
 ];
 
 export default function AdminNav() {

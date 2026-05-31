@@ -12,6 +12,8 @@ model Admin {
   email        String   @unique
   passwordHash String
   name         String?
+  totpSecret   String?  // base32 TOTP secret — null until MFA is set up
+  mfaEnabled   Boolean  @default(false)
   createdAt    DateTime @default(now())
 }
 

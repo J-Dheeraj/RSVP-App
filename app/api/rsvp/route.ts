@@ -2,34 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rsvpSchema } from "@/lib/validations";
 import { allocateTable } from "@/lib/allocation";
-
-// NOTE: This rate limiter works in long-running Node.js servers.
-// On serverless (Vercel), each cold start resets the map — replace with
-// Upstash Redis (@upstash/ratelimit) before deploying to production.
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const window = 10 * 60 * 1000;
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + window });
-    return true;
-  }
-  if (entry.count >= 5) return false;
-  entry.count++;
-  return true;
-}
+import { checkRsvpRateLimit } from "@/lib/ratelimit";
 
 export async function POST(req: NextRequest) {
-  // x-forwarded-for is a comma-separated proxy chain — take the first (client) IP
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0].trim() ??
     req.headers.get("x-real-ip") ??
     "unknown";
 
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json({ error: "Too many submissions. Try again later." }, { status: 429 });
+  const { success, retryAfterSeconds } = await checkRsvpRateLimit(ip);
+  if (!success) {
+    return NextResponse.json(
+      { error: "Too many submissions. Try again later." },
+      {
+        status: 429,
+        headers: retryAfterSeconds ? { "Retry-After": String(retryAfterSeconds) } : {},
+      }
+    );
   }
 
   const body = await req.json().catch(() => null);
@@ -52,14 +41,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const rsvp = await prisma.$transaction(async (tx) => {
-      // Re-check capacity inside the transaction to prevent overbooking under
-      // concurrent submissions (TOCTOU between allocation read and create write).
       if (tableId) {
         const [agg, table] = await Promise.all([
-          tx.rSVP.aggregate({
-            where: { tableId },
-            _sum: { guestCount: true },
-          }),
+          tx.rSVP.aggregate({ where: { tableId }, _sum: { guestCount: true } }),
           tx.table.findUnique({ where: { id: tableId }, select: { capacity: true } }),
         ]);
         const used = agg._sum.guestCount ?? 0;
