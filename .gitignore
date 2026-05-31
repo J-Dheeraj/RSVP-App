@@ -1,0 +1,8 @@
+.next/
+node_modules/
+*.db
+*.db-journal
+.env
+.env.local
+prisma/migrations/
+graphify-out/
